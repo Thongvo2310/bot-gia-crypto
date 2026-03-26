@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 
 DB_PATH = "alerts.db"
-TOKEN = os.getenv("8268708834:AAE2coMuFQVWIn7-PFB1PRG6xOArTar202A", "").strip()
+TOKEN = os.getenv("8268708834:AAHlUWIR7D_IWdqCJTF-FVNLTv2CN-1Fqrc", "").strip()
 USER_ID_RAW = os.getenv("8268708834", "").strip()
 BINANCE_URLS = [
     "https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT",

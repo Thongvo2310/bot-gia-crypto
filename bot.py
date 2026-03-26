@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # --- THÔNG TIN ---
 TOKEN = "8268708834:AAH9kN-VM0J-zq2BV_B7yaqMhQBGJtxdUgQ"
-USER_ID = 988502675
+USER_ID = 52504489
 
 def init_db():
     conn = sqlite3.connect('alerts.db')
@@ -16,23 +16,33 @@ def init_db():
     conn.commit()
     conn.close()
 
+# --- BỘ LỌC LÁCH LUẬT BINANCE ---
 def get_price(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}USDT"
-        res = requests.get(url, timeout=10).json()
-        return float(res['price'])
-    except:
-        return None
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    symbol_upper = symbol.upper()
+    # Dùng nhiều link dự phòng để tránh bị Binance chặn IP của server
+    urls = [
+        f"https://api.binance.com/api/v3/ticker/price?symbol={symbol_upper}USDT",
+        f"https://api1.binance.com/api/v3/ticker/price?symbol={symbol_upper}USDT",
+        f"https://api2.binance.com/api/v3/ticker/price?symbol={symbol_upper}USDT",
+        f"https://api3.binance.com/api/v3/ticker/price?symbol={symbol_upper}USDT"
+    ]
+    
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                return float(res.json()['price'])
+        except:
+            continue
+            
+    return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    incoming_id = update.effective_user.id
-    print(f"👉 NHẬN ĐƯỢC TIN NHẮN TỪ ID: {incoming_id}")
-    
-    if incoming_id != USER_ID: 
-        await update.message.reply_text(f"⛔ Xin lỗi, bạn đang bị chặn vì sai ID!\n\n👉 ID trong code hiện tại: {USER_ID}\n👉 ID thực tế của bạn là: {incoming_id}\n\nCách sửa: Mở code trên GitHub, sửa lại dòng USER_ID thành {incoming_id} là xong!")
-        return
-        
-    await update.message.reply_text("✅ TRỢ LÝ BÁO GIÁ ĐÃ SẴN SÀNG!\n- Gõ /price btc\n- Gõ /alert btc 65000\n- Gõ /list để xem lệnh")
+    if update.effective_user.id != USER_ID: return
+    await update.message.reply_text("✅ TRỢ LÝ BÁO GIÁ ĐÃ SẴN SÀNG!\n- Gõ /price btc\n- Gõ /alert btc 65000\n- Gõ /list để xem lệnh\n- Gõ /clear để xóa lệnh")
 
 async def check_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != USER_ID: return
@@ -44,7 +54,7 @@ async def check_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if price:
         await update.message.reply_text(f"💰 {symbol}: ${price:,.2f}")
     else:
-        await update.message.reply_text("❌ Không tìm thấy coin.")
+        await update.message.reply_text("❌ Mạng lỗi hoặc Binance đang chặn. Thử lại sau nhé!")
 
 async def set_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != USER_ID: return
@@ -53,7 +63,7 @@ async def set_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_price = float(context.args[1])
         current_price = get_price(symbol)
         if not current_price:
-            await update.message.reply_text("❌ Tên coin sai.")
+            await update.message.reply_text("❌ Lỗi mạng không lấy được giá. Thử lại sau!")
             return
         direction = "above" if target_price > current_price else "below"
         conn = sqlite3.connect('alerts.db')
@@ -64,6 +74,34 @@ async def set_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Đã đặt báo động {symbol} tại ${target_price:,.2f}")
     except:
         await update.message.reply_text("⚠️ Lỗi! Thử lại: /alert btc 65000")
+
+async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != USER_ID: return
+    conn = sqlite3.connect('alerts.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM alerts")
+    alerts = c.fetchall()
+    conn.close()
+    
+    if not alerts:
+        await update.message.reply_text("📭 Chưa có báo động nào.")
+        return
+    
+    text = "🔔 *CÁC BÁO ĐỘNG ĐANG CHỜ:*\n\n"
+    for alert in alerts:
+        aid, sym, target, direct = alert
+        arrow = "📈" if direct == "above" else "📉"
+        text += f"{arrow} {sym}: ${target:,.2f} ({direct})\n"
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != USER_ID: return
+    conn = sqlite3.connect('alerts.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM alerts")
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("🗑️ Đã xóa tất cả báo động!")
 
 async def monitor_prices(app):
     await asyncio.sleep(5)
@@ -92,6 +130,9 @@ async def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("price", check_price))
     application.add_handler(CommandHandler("alert", set_alert))
+    application.add_handler(CommandHandler("list", list_alerts))
+    application.add_handler(CommandHandler("clear", clear_alerts))
+    
     asyncio.create_task(monitor_prices(application))
     print("🚀 Bot đang chạy và chờ tin nhắn...")
     await application.initialize()

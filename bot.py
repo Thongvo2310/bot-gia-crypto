@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # --- THÔNG TIN ---
-TOKEN = "8268708834:AAHKv4m3C9yoNHwYXADrjX7oGHHsHjm0k7c"
+TOKEN = "8268708834:AAH9kN-VM0J-zq2BV_B7yaqMhQBGJtxdUgQ"
 USER_ID = 52504489
 
 def init_db():

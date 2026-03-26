@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # --- THÔNG TIN ---
 TOKEN = "8268708834:AAH9kN-VM0J-zq2BV_B7yaqMhQBGJtxdUgQ"
-USER_ID = 52504489
+USER_ID = 988502675
 
 def init_db():
     conn = sqlite3.connect('alerts.db')

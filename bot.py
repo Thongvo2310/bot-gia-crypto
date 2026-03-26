@@ -4,11 +4,10 @@ import sqlite3
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- THÔNG TIN CỦA THÔNG ---
-TOKEN = "8268708834:AAH9kN-VM0J-zq2BV_B7yaqMhQBGJtxdUgQ"
+# --- THÔNG TIN ---
+TOKEN = "8268708834:AAHKv4m3C9yoNHwYXADrjX7oGHHsHjm0k7c"
 USER_ID = 52504489
 
-# --- DATABASE ---
 def init_db():
     conn = sqlite3.connect('alerts.db')
     c = conn.cursor()
@@ -25,29 +24,25 @@ def get_price(symbol):
     except:
         return None
 
-# --- CÁC LỆNH TELEGRAM ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != USER_ID: return
-    help_text = """
-✅ *TRỢ LÝ BÁO GIÁ ĐÃ SẴN SÀNG!*
-
-📌 *CÁC LỆNH:*
-• `/price btc` - Xem giá hiện tại
-• `/alert btc 65000` - Đặt cảnh báo
-• `/list` - Xem các cảnh báo đang chạy
-• `/clear` - Xóa tất cả cảnh báo
-"""
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    incoming_id = update.effective_user.id
+    print(f"👉 NHẬN ĐƯỢC TIN NHẮN TỪ ID: {incoming_id}")
+    
+    if incoming_id != USER_ID: 
+        await update.message.reply_text(f"⛔ Xin lỗi, bạn đang bị chặn vì sai ID!\n\n👉 ID trong code hiện tại: {USER_ID}\n👉 ID thực tế của bạn là: {incoming_id}\n\nCách sửa: Mở code trên GitHub, sửa lại dòng USER_ID thành {incoming_id} là xong!")
+        return
+        
+    await update.message.reply_text("✅ TRỢ LÝ BÁO GIÁ ĐÃ SẴN SÀNG!\n- Gõ /price btc\n- Gõ /alert btc 65000\n- Gõ /list để xem lệnh")
 
 async def check_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != USER_ID: return
     if not context.args:
-        await update.message.reply_text("⚠️ Ví dụ: `/price btc`", parse_mode='Markdown')
+        await update.message.reply_text("⚠️ Ví dụ: /price btc")
         return
     symbol = context.args[0].upper()
     price = get_price(symbol)
     if price:
-        await update.message.reply_text(f"💰 *{symbol}*: `${price:,.2f}`", parse_mode='Markdown')
+        await update.message.reply_text(f"💰 {symbol}: ${price:,.2f}")
     else:
         await update.message.reply_text("❌ Không tìm thấy coin.")
 
@@ -60,46 +55,16 @@ async def set_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not current_price:
             await update.message.reply_text("❌ Tên coin sai.")
             return
-            
         direction = "above" if target_price > current_price else "below"
         conn = sqlite3.connect('alerts.db')
         c = conn.cursor()
         c.execute("INSERT INTO alerts (symbol, price, direction) VALUES (?, ?, ?)", (symbol, target_price, direction))
         conn.commit()
         conn.close()
-        await update.message.reply_text(f"✅ Đã đặt báo động *{symbol}* tại ngưỡng `${target_price:,.2f}`", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ Đã đặt báo động {symbol} tại ${target_price:,.2f}")
     except:
-        await update.message.reply_text("⚠️ Lỗi cú pháp! Thử lại: `/alert btc 65000`", parse_mode='Markdown')
+        await update.message.reply_text("⚠️ Lỗi! Thử lại: /alert btc 65000")
 
-async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != USER_ID: return
-    conn = sqlite3.connect('alerts.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM alerts")
-    alerts = c.fetchall()
-    conn.close()
-    
-    if not alerts:
-        await update.message.reply_text("📭 Chưa có cảnh báo nào.")
-        return
-    
-    text = "🔔 *CÁC CẢNH BÁO ĐANG CHẠY:*\n\n"
-    for alert in alerts:
-        aid, sym, target, direct = alert
-        arrow = "📈" if direct == "above" else "📉"
-        text += f"{arrow} `{sym}`: ${target:,.2f} ({direct})\n"
-    await update.message.reply_text(text, parse_mode='Markdown')
-
-async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != USER_ID: return
-    conn = sqlite3.connect('alerts.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM alerts")
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("🗑️ Đã xóa tất cả cảnh báo!")
-
-# --- LUỒNG KIỂM TRA GIÁ ---
 async def monitor_prices(app):
     await asyncio.sleep(5)
     while True:
@@ -112,9 +77,8 @@ async def monitor_prices(app):
                 aid, sym, target, direct = alert
                 curr = get_price(sym)
                 if not curr: continue
-                
                 if (direct == "above" and curr >= target) or (direct == "below" and curr <= target):
-                    await app.bot.send_message(chat_id=USER_ID, text=f"🚨 BÁO ĐỘNG: *{sym}* đã chạm `${curr:,.2f}`!", parse_mode='Markdown')
+                    await app.bot.send_message(chat_id=USER_ID, text=f"🚨 BÁO ĐỘNG: {sym} đạt ${curr:,.2f}!")
                     c.execute("DELETE FROM alerts WHERE id=?", (aid,))
                     conn.commit()
             conn.close()
@@ -125,16 +89,11 @@ async def monitor_prices(app):
 async def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
-    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("price", check_price))
     application.add_handler(CommandHandler("alert", set_alert))
-    application.add_handler(CommandHandler("list", list_alerts))
-    application.add_handler(CommandHandler("clear", clear_alerts))
-    
     asyncio.create_task(monitor_prices(application))
-    
-    print("🚀 Bot đang chạy...")
+    print("🚀 Bot đang chạy và chờ tin nhắn...")
     await application.initialize()
     await application.start()
     await application.updater.start_polling()

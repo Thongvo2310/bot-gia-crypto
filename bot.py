@@ -1,11 +1,12 @@
 import requests
+import asyncio
 import sqlite3
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- THÔNG TIN CỦA THÔNG ---
+# --- THÔNG TIN ĐÃ ĐƯỢC ĐIỀN CHUẨN XÁC ---
 TOKEN = "8268708834:AAHKv4m3C9yoNHwYXADrjX7oGHHsHjm0k7c"
-USER_ID = 8268708834
+USER_ID = 52504489
 
 # --- DATABASE ---
 def init_db():
@@ -27,12 +28,12 @@ def get_price(symbol):
 # --- CÁC LỆNH TELEGRAM ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != USER_ID: return
-    await update.message.reply_text("✅ Bot đã sẵn sàng nhận lệnh!\n- Gõ /price btc\n- Gõ /alert btc 65000")
+    await update.message.reply_text("✅ Trợ lý báo giá đã sẵn sàng!\n- Gõ /price btc để xem giá\n- Gõ /alert btc 65000 để đặt báo động")
 
 async def check_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != USER_ID: return
     if not context.args:
-        await update.message.reply_text("⚠️ Gõ thêm tên coin. Ví dụ: /price btc")
+        await update.message.reply_text("⚠️ Ví dụ: /price btc")
         return
     symbol = context.args[0].upper()
     price = get_price(symbol)
@@ -61,39 +62,39 @@ async def set_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("⚠️ Lỗi cú pháp! Thử lại: /alert btc 65000")
 
-# --- LUỒNG KIỂM TRA GIÁ CHUẨN CỦA TELEGRAM ---
-async def monitor_prices(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        conn = sqlite3.connect('alerts.db')
-        c = conn.cursor()
-        c.execute("SELECT * FROM alerts")
-        alerts = c.fetchall()
-        for alert in alerts:
-            aid, sym, target, direct = alert
-            curr = get_price(sym)
-            if not curr: continue
-            
-            if (direct == "above" and curr >= target) or (direct == "below" and curr <= target):
-                await context.bot.send_message(chat_id=USER_ID, text=f"🚨 BÁO ĐỘNG: {sym} đã chạm {curr:,}!")
-                c.execute("DELETE FROM alerts WHERE id=?", (aid,))
-                conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Lỗi: {e}")
+# --- LUỒNG KIỂM TRA GIÁ ---
+async def monitor_prices(app):
+    while True:
+        try:
+            conn = sqlite3.connect('alerts.db')
+            c = conn.cursor()
+            c.execute("SELECT * FROM alerts")
+            alerts = c.fetchall()
+            for alert in alerts:
+                aid, sym, target, direct = alert
+                curr = get_price(sym)
+                if not curr: continue
+                
+                if (direct == "above" and curr >= target) or (direct == "below" and curr <= target):
+                    await app.bot.send_message(chat_id=USER_ID, text=f"🚨 BÁO ĐỘNG: {sym} đã chạm {curr:,}!")
+                    c.execute("DELETE FROM alerts WHERE id=?", (aid,))
+                    conn.commit()
+            conn.close()
+        except Exception as e:
+            pass
+        await asyncio.sleep(20)
 
 # --- KHỞI ĐỘNG BOT ---
 if __name__ == '__main__':
     init_db()
     application = Application.builder().token(TOKEN).build()
     
-    # Gắn các lệnh vào bot
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("price", check_price))
     application.add_handler(CommandHandler("alert", set_alert))
     
-    # Kích hoạt vòng lặp kiểm tra giá mỗi 20 giây (không làm đơ bot)
-    job_queue = application.job_queue
-    job_queue.run_repeating(monitor_prices, interval=20, first=5)
+    loop = asyncio.get_event_loop()
+    loop.create_task(monitor_prices(application))
     
-    print("🚀 Bot đang chạy mượt mà...")
+    print("🚀 Bot đang chạy...")
     application.run_polling()
